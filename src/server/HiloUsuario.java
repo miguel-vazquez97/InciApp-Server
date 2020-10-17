@@ -79,12 +79,7 @@ public class HiloUsuario extends Thread{
                     finalizar=true;
             }
             System.out.println("Salio");
-            //comprobamos si tenia sesion iniciada el cliente
-            //String correo = protocoloAndroid.getCorreo();
-            //if(correo!=null)
-                //si es así, cerramos su sesion
-                //controlGestion.logOutUsuario(correo);
-            //cerramos la conexion
+            
             usuario.close();
             
         } catch (IOException ex) {            
