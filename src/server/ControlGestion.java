@@ -42,6 +42,35 @@ public class ControlGestion {
     
     //      APP ESCRITORIO
    
+    public synchronized String logAdmin(String correo, String contrasena){
+        String resultado = null;
+        
+        try {
+            Class.forName(driver);  
+            Connection connection = (Connection) DriverManager.getConnection(url,user,password);
+            
+            String consulta="SELECT nombre, apellido, tipoUsuario FROM usuario WHERE correo=? AND contrasena=?";
+            PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta);
+            psConsulta.setString(1,correo);
+            psConsulta.setString(2,contrasena);
+            ResultSet result = psConsulta.executeQuery();
+          
+            if(result.next()){  
+                resultado = Integer.toString(result.getInt(3))+"||"+result.getString(1)+" "+result.getString(2)+"||";
+            }
+            
+            connection.close();
+            psConsulta.close();
+            result.close();
+            
+        } catch (ClassNotFoundException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (SQLException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        return resultado;
+    }
     
     //      APP ANDROID
 
