@@ -58,8 +58,7 @@ public class HiloUsuario extends Thread{
                     System.out.println(mensajeUsuario);
                     //mensajes menores o iguales a id 50 se trataran en el protocolo para la app escritorio 
                     if(Integer.parseInt(mensajeUsuario.substring(0, mensajeUsuario.indexOf("|"))) <= 50 ){
-                        mensajeProtocolo = protocolo.processInput(mensajeUsuario);
-                        
+                        mensajeProtocolo = protocolo.processInput(mensajeUsuario);                        
                     }else{
                         mensajeProtocolo = protocoloAndroid.processInput(mensajeUsuario);                      
                     }

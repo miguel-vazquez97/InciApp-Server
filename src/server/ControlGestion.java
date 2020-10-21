@@ -5,6 +5,8 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -16,6 +18,11 @@ import java.util.logging.Logger;
 public class ControlGestion {
     
     //  COLECCIONES    
+    
+    //solo usuarios administradores
+    ArrayList<String> usuariosAdminLog = new ArrayList<>();
+    //resto de usuarios    
+    HashMap<String, Integer> usuariosLog = new HashMap<>();
     
     //  CONEXION
     static String mysql_jdbd_driver="com.mysql.jdbc.Driver";
@@ -72,8 +79,62 @@ public class ControlGestion {
         return resultado;
     }
     
+    
     //      APP ANDROID
 
+    public synchronized int logUsuario(String correo, String contrasena, boolean sesionIniciada){
+        int tipoUsuario = 0;
+        try {
+            Class.forName(driver);  
+            Connection connection = (Connection) DriverManager.getConnection(url,user,password);
+            
+            String consulta="SELECT correo, contrasena, nombre, apellido, tipoUsuario FROM usuario WHERE correo=? AND contrasena=?";
+            PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta);
+            psConsulta.setString(1,correo);
+            psConsulta.setString(2,contrasena);
+            ResultSet result = psConsulta.executeQuery();
+          
+            //comprobamos si hay algun usuario con ese correo
+            //si es así iniciamos sesion
+            //si no es así informamos que no es correcto el correo/contrasena
+            if(result.next()){               
+                //comprobamos si es la primera vez que el usuario inicia sesion
+                //si es asi, registramos el correo con valor 1 
+                if(!usuariosLog.containsKey(correo)){
+                    usuariosLog.put(correo, 1);        
+                }else{
+                //si ya ha iniciado sesion en otro dispositivo, iremos sumando tantas veces lo haga
+                //cuando el valor de sesionInciada es true significa que ya habia iniciado sesion con ese dispositivo
+                //asi llevaremos un control del usuario y el numero de veces que ha inicado sesion en otro dispositivo
+                    if(!sesionIniciada){
+                        int n_sesiones_iniciadas = usuariosLog.get(correo);
+                        n_sesiones_iniciadas++;
+                        usuariosLog.put(correo,n_sesiones_iniciadas);
+                    }
+                }
+
+                tipoUsuario = result.getInt(5);
+
+                connection.close();
+                psConsulta.close();
+                result.close();
+                
+                return tipoUsuario;
+            }
+            
+            connection.close();
+            psConsulta.close();
+            result.close();
+            
+        } catch (ClassNotFoundException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (SQLException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        return tipoUsuario;
+    }
+    
     
     //      COMPARTIDO POR AMBAS APPS
     
