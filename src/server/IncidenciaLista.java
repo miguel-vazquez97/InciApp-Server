@@ -1,18 +1,18 @@
-package appservidor;
+package server;
 
 /**
  *
  * @author mivap
  */
-public class Incidencia {
+public class IncidenciaLista {
     private int id;
     private String tipo;
     private String estado;
     private String ubicacion;
 
-    public Incidencia(){}
+    public IncidenciaLista(){}
     
-    public Incidencia(int id, String tipo, String estado, String ubicacion) {
+    public IncidenciaLista(int id, String tipo, String estado, String ubicacion) {
         this.id = id;
         this.tipo = tipo;
         this.estado = estado;

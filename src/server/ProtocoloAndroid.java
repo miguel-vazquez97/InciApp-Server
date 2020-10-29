@@ -1,7 +1,15 @@
 package server;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.Socket;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -13,7 +21,23 @@ public class ProtocoloAndroid {
                                        "51||registrarUsuarioDenegado||",
                                        "",
                                        "53||logUsuarioOk||",
-                                       "54||logUsuarioDenegado||"};
+                                       "54||logUsuarioDenegado||",
+                                       "55||registrar_nueva_incidencia||",
+                                       "56||incidenciaOk||",
+                                       "57||incidenciaDenegada||",
+                                       "58||incidenciaYaRegistrada||",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "",
+                                       "70||logOutOk||"};
     
     static String path;
     
@@ -21,20 +45,43 @@ public class ProtocoloAndroid {
     private static final int INICIO = 0;
     private static final int REGISTRAR_USUARIO = 1;
     private static final int LOG_USUARIO = 2;
+    private static final int LOG_OUT_USUARIO = 15;
+    private static final int REGISTRAR_INCIDENCIA = 3;
     
     static boolean transicionNula = false;
     
     String correoUsuario = null;
     ControlGestion controlGestion;
     Socket socket;
+    HiloTemporizador hiloTemporizador;
+    
+    OutputStream out;
+    InputStream input;
+    DataOutputStream outputStream;
+    DataInputStream inputStream;
+    
+    File file;
+    OutputStream outputImagen;
+    long longitud;
+    byte[] bytesImagen;
+    Long consecutivo;
+    String name, pictureFile;
 
 
-
-    public ProtocoloAndroid(Socket socket, ControlGestion cg, String path){
+    public ProtocoloAndroid(Socket socket, ControlGestion cg, String path, HiloTemporizador hiloTemporizador){
         this.socket = socket;
         this.controlGestion = cg;
         this.path = path;
+        this.hiloTemporizador = hiloTemporizador;
         
+        try {
+            out = socket.getOutputStream();
+            input = socket.getInputStream();
+            outputStream = new DataOutputStream(socket.getOutputStream());
+            inputStream = new DataInputStream(socket.getInputStream());
+        } catch (IOException ex) {
+            Logger.getLogger(ProtocoloAndroid.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
     
     public String processInput(String respuestaUsuario) throws IOException{
@@ -57,6 +104,17 @@ public class ProtocoloAndroid {
                         case "52":
                             state = LOG_USUARIO;
                             transicionNula=true;
+                            break;
+                            
+                        case "53":
+                            state = REGISTRAR_INCIDENCIA;
+                            transicionNula=true;
+                            break;
+                            
+                        case "65":
+                            state = LOG_OUT_USUARIO;
+                            transicionNula=true;
+                            break;
                     }
                     
                     break;
@@ -87,6 +145,58 @@ public class ProtocoloAndroid {
                 
                     state = INICIO;
                     transicionNula=false;
+                    break;  
+                    
+                case LOG_OUT_USUARIO:
+                    
+                    controlGestion.logOutUsuario(correoUsuario);
+                    respuestaProtocolo = codigosProtocoloAndroid[20];
+                    
+                    state = INICIO;
+                    transicionNula=false;
+                    
+                    break;
+                    
+                case REGISTRAR_INCIDENCIA:
+                    
+                    outputStream.writeUTF("EnviarImagen");
+                    
+                    consecutivo = System.currentTimeMillis() / 1000;
+                    name = consecutivo.toString();
+                    pictureFile = name+".jpg";
+                    
+                    file = new File(path+"\\"+pictureFile);
+                    file.createNewFile();
+                    outputImagen = new FileOutputStream(file);
+                    while(inputStream.available()<1){}
+                     longitud = inputStream.readLong();
+
+                     while(file.length()<longitud){
+                        bytesImagen = new byte[inputStream.available()];
+                        inputStream.read(bytesImagen);
+                        outputImagen.write(bytesImagen);                        
+                    }                  
+                    outputImagen.close();
+                    
+                    outputStream.writeUTF("EnviarDatosIncidencia");
+                    String datosInci = inputStream.readUTF();
+                    String [] datos = datosInci.split("\\|\\|");
+                    String respuesta_registrar_incidencia = controlGestion.nuevaIncidencia(datos[0],datos[1],datos[2],datos[3],datos[4],file.getName());
+                    
+                    switch(respuesta_registrar_incidencia){
+                        case "Ok":
+                            respuestaProtocolo += codigosProtocoloAndroid[6];
+                            break;
+                        case "NoOk":
+                            respuestaProtocolo += codigosProtocoloAndroid[7];
+                            break;
+                        case "YaExiste":
+                            respuestaProtocolo += codigosProtocoloAndroid[8];
+                            break;
+                    }                    
+                    
+                    state = INICIO;
+                    transicionNula=false;
                     break;    
                 
             }
@@ -95,6 +205,10 @@ public class ProtocoloAndroid {
         
         return respuestaProtocolo;
         
+    }
+    
+    public String getCorreoUsuario(){
+        return correoUsuario;
     }
 
 }

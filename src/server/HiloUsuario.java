@@ -16,29 +16,34 @@ public class HiloUsuario extends Thread{
     Socket usuario;    
     ControlGestion controlGestion;
     String path;
-    int tiempo_espera;
+    boolean finalizar = false;
+    HiloTemporizador hiloTemporizador;
+    // 0 == aplicacion escritorio ; 1 == aplicacion móvil
+    int tipoAplicacion;
     
     HiloUsuario(Socket socket, ControlGestion cg, String path) {
         this.usuario = socket;
         this.controlGestion = cg;  
         this.path = path;
-        this.tiempo_espera = 0;
+        hiloTemporizador = new HiloTemporizador(this);
     }
     
     public void run(){
-        Protocolo protocolo = new Protocolo(usuario, controlGestion);
-        ProtocoloAndroid protocoloAndroid = new ProtocoloAndroid(usuario, controlGestion, path);
+        Protocolo protocolo = new Protocolo(usuario, controlGestion, hiloTemporizador);
+        ProtocoloAndroid protocoloAndroid = new ProtocoloAndroid(usuario, controlGestion, path, hiloTemporizador);
+        //lanzaremos este hilo cuando el usuario haga login para así llevar un control de la sesion
+        //una vez pase un tiempo determinado sin que el usuario haya interaccionado con el servidor cerraremos su sesion
         
-        InputStream input = null;
+        InputStream leerUsuario = null;
         OutputStream enviarUsuario = null;
-        boolean finalizar = false;
+       
         String mensajeUsuario;
-        String mensajeProtocolo;
+        String mensajeProtocolo = "";
         
         try {
             
             enviarUsuario = usuario.getOutputStream();
-            input = usuario.getInputStream();
+            leerUsuario = usuario.getInputStream();
             
             byte[] enviarUsu = "Conexion con servidor con exito!".getBytes();
             
@@ -48,45 +53,57 @@ public class HiloUsuario extends Thread{
             byte[] respuestaUsu;
             while(!finalizar){
                 
-                if(input.available()>0){
+                if(leerUsuario.available()>0){
                     //si el cliente ha interactuado, igualamos el tiempo de espera a 0
-                    tiempo_espera = 0;
-                    
-                    respuestaUsu = new byte[input.available()];
-                    input.read(respuestaUsu);
+                    hiloTemporizador.interrupt();
+                                        
+                    respuestaUsu = new byte[leerUsuario.available()];
+                    leerUsuario.read(respuestaUsu);
                     mensajeUsuario = new String(respuestaUsu);
                     System.out.println(mensajeUsuario);
                     //mensajes menores o iguales a id 50 se trataran en el protocolo para la app escritorio 
                     if(Integer.parseInt(mensajeUsuario.substring(0, mensajeUsuario.indexOf("|"))) <= 50 ){
-                        mensajeProtocolo = protocolo.processInput(mensajeUsuario);                        
+                        mensajeProtocolo = protocolo.processInput(mensajeUsuario);  
+                        tipoAplicacion = 0;
                     }else{
                         mensajeProtocolo = protocoloAndroid.processInput(mensajeUsuario);                      
+                        tipoAplicacion = 1;
                     }
                     
                     enviarUsu = mensajeProtocolo.getBytes();
                     enviarUsuario.write(enviarUsu);
                     enviarUsuario.flush();
                     
-                    if(mensajeProtocolo.equals("71||salirAppOk||"))
+                    if(mensajeProtocolo.equals("70||logOutOk||") || mensajeProtocolo.equals("6||logOutAdminOk||"))
                         finalizar=true;
                     
                 }                
                 Thread.sleep(3000);
-                tiempo_espera += 3000;
-                //con esto comprobamos que si lleva 30 mnts sin actividad con el cliente
-                if(tiempo_espera==1800000)
-                    finalizar=true;
             }
-            System.out.println("Salio");
             
-            usuario.close();
+                System.out.println("Salio");
+                //cerramos la conexiones
+                usuario.close();
+                
+        } catch (IOException ex) {
+            Logger.getLogger(HiloUsuario.class.getName()).log(Level.SEVERE, null, ex);
+        } catch(InterruptedException ie){
+            //cuando se hagota el tiempo de interactividad, el hilo encargado nos enviara una interrupción para hacernoslo saber y cerrar la sesión
+            System.out.println("Sesion caducada");  
+           
+            if(tipoAplicacion==0){
+                controlGestion.logOutAdmin(protocolo.getCorreoUsuario());
+            }else{
+                controlGestion.logOutUsuario(protocoloAndroid.getCorreoUsuario());
+            }
             
-        } catch (IOException ex) {            
-            Logger.getLogger(HiloUsuario.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (InterruptedException ex) {     
-            Logger.getLogger(HiloUsuario.class.getName()).log(Level.SEVERE, null, ex);
+            try {
+                usuario.close();
+            } catch (IOException ex) {
+                System.out.println("Error al cerrar socket. HiloUsuario");
+            }
+            
         }
-            
     }    
     
 }
