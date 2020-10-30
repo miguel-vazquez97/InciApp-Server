@@ -5,6 +5,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.sql.Connection;
 import java.util.Date;
@@ -14,6 +15,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -688,6 +690,209 @@ public class ControlGestion {
     
     }
 
+    public synchronized JSONArray obtenerListadoIncidencias(String correo, String tipo_incidencias){        
+        JSONArray ar = null;
+        try {
+            
+            Class.forName(driver);
+            try (Connection connection = (Connection) DriverManager.getConnection(url,user,password)) {
+                String consulta = null;
+                switch(tipo_incidencias){
+                    
+                    // usuario ciudadano
+                    case "historial":
+                        consulta="SELECT MAX(ei.idEstado), i.id, t.nombre, e.titulo, i.ubicacion, i.direccion\n" +
+                                "FROM incidencia i LEFT JOIN estadoincidencia ei ON(i.id=ei.idIncidencia) LEFT JOIN tipoincidencia t ON(i.idTipo=t.id) LEFT JOIN estado e ON(ei.idEstado=e.id)\n" +
+                                "WHERE i.usuarioCiudadano = ? \n" +
+                                "GROUP BY(i.id)";
+                        break;
+                    case "activas":
+                        consulta="SELECT MAX(ei.idEstado), i.id, t.nombre, MAX(e.titulo), i.ubicacion, i.direccion\n" +
+                                "FROM incidencia i LEFT JOIN estadoincidencia ei ON(i.id=ei.idIncidencia) LEFT JOIN tipoincidencia t ON(i.idTipo=t.id) LEFT JOIN estado e ON(ei.idEstado=e.id)\n" +
+                                "WHERE i.usuarioCiudadano = ?\n" +
+                                "GROUP BY(i.id)\n" +
+                                "HAVING MAX(ei.idEstado) < 7;";
+                        break;
+                        
+                }   ResultSet resultTipo;
+                try (PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta)) {
+                    psConsulta.setString(1,correo);
+                    resultTipo = psConsulta.executeQuery();
+                    int id;
+                    String tipo,estado,ubicacion,direccion;
+                    ar=new JSONArray();
+                    JSONObject obj;
+                    while(resultTipo.next()){
+                        obj = new JSONObject();
+                        id = resultTipo.getInt(2);
+                        obj.put("id", id);
+                        tipo = resultTipo.getString(3);
+                        obj.put("tipo", tipo);
+                        estado = resultTipo.getString(4);
+                        obj.put("estado",estado);
+                        ubicacion = resultTipo.getString(5);
+                        obj.put("ubicacion",ubicacion);
+                        direccion = resultTipo.getString(6);
+                        obj.put("direccion",direccion);
+                        ar.add(obj);
+                    }
+                }
+                resultTipo.close();
+            }
+            
+        } catch (ClassNotFoundException | SQLException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        } 
+            return ar;
+    }
+
+    public synchronized JSONArray obtenerDetallesIncidencia(int id){
+        JSONArray ar = null;
+        try {
+            
+            Class.forName(driver);
+            try (Connection connection = (Connection) DriverManager.getConnection(url,user,password)) {
+                String consulta="SELECT e.titulo, i.ubicacion, i.direccion, i.descripcion, t.nombre, ei.fecha,\n" +
+                        "IF(ei.idEstado=7, (SELECT ei2.descripcion FROM estadoincidencia ei2 WHERE ei2.idIncidencia=i.id AND ei2.idEstado=5), ei.descripcion) as \"descripcionestado\",\n" +
+                        "m.imagen, e.descripcion\n" +
+                        "FROM incidencia i LEFT JOIN tipoincidencia t ON (i.idTipo=t.id) LEFT JOIN estadoincidencia ei ON (i.id=ei.idIncidencia) LEFT JOIN estado e ON (ei.idEstado=e.id) LEFT JOIN imagen m ON (ei.codImagen=m.id)\n" +
+                        "WHERE ei.idEstado IN (1,2,4,7,8) AND i.id = ? ";
+                ResultSet resultTipo;
+                try (PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta)) {
+                    psConsulta.setInt(1,id);
+                    resultTipo = psConsulta.executeQuery();
+                    ar=new JSONArray();
+                    JSONObject obj;
+                    File file;
+                    String base64;
+                    String estado, ubicacion, direccion, descripcion, tipo,descripcionEstadoIncidencia, imagen, descripcionEstado;
+                    Date fecha;
+                    while(resultTipo.next()){
+                        obj = new JSONObject();
+                        estado = resultTipo.getString(1);
+                        obj.put("estado",estado);
+                        switch(estado){
+                            case "NuevaRegistrada":
+                                ubicacion = resultTipo.getString(2);
+                                obj.put("ubicacion",ubicacion);
+                                direccion = resultTipo.getString(3);
+                                obj.put("direccion",direccion);
+                                descripcion = resultTipo.getString(4);
+                                obj.put("descripcion",descripcion);
+                                tipo = resultTipo.getString(5);
+                                obj.put("tipo",tipo);
+                                fecha = resultTipo.getDate(6);
+                                obj.put("fecha",fecha);
+                                obj.put("descripcionEstadoIncidencia", "");
+                                obj.put("descripcionEstado","");
+                                imagen = resultTipo.getString(8);
+                                file = new File(pathImagenes+"\\"+imagen);
+                                System.out.println(file);
+                                //file = new File("D:\\NetBeansProjects\\AppServidor\\src\\imagenes_incidencias\\"+imagen);
+                                if(file.exists()){
+                                    BufferedImage bImage = ImageIO.read(file);
+                                    BufferedImage nImage = resize(bImage, 400, 500);
+                                    
+                                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                    ImageIO.write( nImage, "jpg", baos );
+                                    baos.flush();
+                                    byte[] imageInByte = baos.toByteArray();
+                                    baos.close();
+                                    base64 = Base64.getEncoder().encodeToString(imageInByte);
+                                    
+                                    obj.put("imagen",base64);
+                                }else{
+                                    obj.put("imagen","");
+                                }
+                                ar.add(obj);
+                                break;
+                                
+                            case "EnTramite":
+                                obj.put("ubicacion","");
+                                obj.put("direccion","");
+                                obj.put("descripcion","");
+                                obj.put("tipo","");
+                                fecha = resultTipo.getDate(6);                               
+                                obj.put("fecha",fecha);
+                                obj.put("descripcionEstadoIncidencia", "");
+                                obj.put("descripcionEstado","");
+                                ar.add(obj);
+                                break;
+                                
+                            case "EnArreglo":
+                                obj.put("ubicacion","");
+                                obj.put("direccion","");
+                                obj.put("descripcion","");
+                                obj.put("tipo","");
+                                fecha = resultTipo.getDate(6);
+                                obj.put("fecha",fecha);
+                                obj.put("descripcionEstadoIncidencia", "");
+                                obj.put("descripcionEstado","");
+                                ar.add(obj);
+                                break;
+                                
+                            case "Solucionada":
+                                obj.put("ubicacion","");
+                                obj.put("direccion","");
+                                obj.put("descripcion","");
+                                obj.put("tipo","");
+                                fecha = resultTipo.getDate(6);
+                                obj.put("fecha",fecha);
+                                descripcionEstadoIncidencia = resultTipo.getString(7);
+                                obj.put("descripcionEstadoIncidencia", descripcionEstadoIncidencia);
+                                obj.put("descripcionEstado","");
+                                imagen = resultTipo.getString(8);
+                                file = new File(pathImagenes+"\\"+imagen);
+                                System.out.println(file);
+                                
+                                if(file.exists()){
+                                    BufferedImage bImage = ImageIO.read(file);
+                                    BufferedImage nImage = resize(bImage, 500, 700);
+                                    
+                                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                    ImageIO.write( nImage, "jpg", baos );
+                                    baos.flush();
+                                    byte[] imageInByte = baos.toByteArray();
+                                    baos.close();
+                                    base64 = Base64.getEncoder().encodeToString(imageInByte);
+                                    
+                                    obj.put("imagen",base64);
+                                }else{
+                                    obj.put("imagen","");
+                                }
+                                ar.add(obj);
+                                
+                                break;
+                            case "Denegada":
+                                obj.put("ubicacion","");
+                                obj.put("direccion","");
+                                obj.put("descripcion","");
+                                obj.put("tipo","");
+                                fecha = resultTipo.getDate(6);
+                                obj.put("fecha",fecha);
+                                descripcionEstadoIncidencia = resultTipo.getString(7);
+                                obj.put("descripcionEstadoIncidencia", descripcionEstadoIncidencia);
+                                obj.put("descripcionEstado","");
+                                ar.add(obj);
+                                break;
+                                
+                        }
+                    }
+                }
+                resultTipo.close();
+            }
+            
+        } catch (ClassNotFoundException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (SQLException | IOException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (Exception ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        }
+            return ar;
+    }
+    
+    
     //      COMPARTIDO POR AMBAS APPS
     
     public synchronized boolean registrarUsuario(String correo, String contrasena, String nombre, String apellido, String dni, int tlf, String departamento, int tipoUsu){
