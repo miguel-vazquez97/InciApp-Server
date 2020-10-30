@@ -119,8 +119,17 @@ public class ControlGestion {
                                 "HAVING MAX(ei.idEstado) = 1;";
                         break;
                         
-                        //INCIDENCIAS_VALIDADAS
+                        //INCIDENCIAS_EN_VALIDACION
                     case "1":
+                        consulta="SELECT MAX(ei.idEstado), i.id, ei.fecha, t.nombre, i.descripcion, i.direccion\n" +
+                                "FROM incidencia i LEFT JOIN estadoincidencia ei ON(i.id=ei.idIncidencia) LEFT JOIN tipoincidencia t ON(i.idTipo=t.id) LEFT JOIN estado e ON(ei.idEstado=e.id)\n" +
+                                "WHERE i.usuarioAdministrador=?\n"+
+                                "GROUP BY(i.id)\n" +
+                                "HAVING MAX(ei.idEstado) = 2;";
+                        break;    
+                        
+                        //INCIDENCIAS_VALIDADAS
+                    case "2":
                         consulta="SELECT MAX(ei.idEstado), i.id, ei.fecha, t.nombre, i.descripcion, i.direccion\n" +
                                 "FROM incidencia i LEFT JOIN estadoincidencia ei ON(i.id=ei.idIncidencia) LEFT JOIN tipoincidencia t ON(i.idTipo=t.id) LEFT JOIN estado e ON(ei.idEstado=e.id)\n" +
                                 "WHERE i.usuarioAdministrador=?\n"+
@@ -129,7 +138,7 @@ public class ControlGestion {
                         break;
                         
                         //INCIDENCIAS_ARREGLADAS
-                    case "2":
+                    case "3":
                         consulta="SELECT MAX(ei.idEstado), i.id, ei.fecha, t.nombre, i.descripcion, i.direccion\n" +
                                 "FROM incidencia i LEFT JOIN estadoincidencia ei ON(i.id=ei.idIncidencia) LEFT JOIN tipoincidencia t ON(i.idTipo=t.id) LEFT JOIN estado e ON(ei.idEstado=e.id)\n" +
                                 "WHERE i.usuarioAdministrador=?\n"+
@@ -138,7 +147,7 @@ public class ControlGestion {
                         break;
                         
                         //HISTORIAL_INCIDENCIAS
-                    case "3":
+                    case "4":
                         consulta="SELECT MAX(ei.idEstado), i.id, ei.fecha, t.nombre, i.descripcion, i.direccion\n" +
                                 "FROM incidencia i LEFT JOIN estadoincidencia ei ON(i.id=ei.idIncidencia) LEFT JOIN tipoincidencia t ON(i.idTipo=t.id) LEFT JOIN estado e ON(ei.idEstado=e.id)\n" +
                                 "GROUP BY(i.id)\n" +
@@ -146,7 +155,7 @@ public class ControlGestion {
                         break;
                 }   ResultSet resultTipo;
                 try (PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta)) {
-                    if(tipoIncidencia.equals("1") || tipoIncidencia.equals("2")){
+                    if(tipoIncidencia.equals("1") || tipoIncidencia.equals("2") || tipoIncidencia.equals("3")){
                         psConsulta.setString(1, correo);
                     }   resultTipo = psConsulta.executeQuery();
                     int id;
@@ -359,6 +368,110 @@ public class ControlGestion {
         
         return asignarSupervisor;
     }
+    
+    public JSONObject obtenerEmpleados(int idIncidencia) {
+        JSONObject obj = null;
+        
+        try {
+            
+            Class.forName(driver);
+            Connection connection = (Connection) DriverManager.getConnection(url,user,password);
+            
+            String consulta= "SELECT u.nombre, u.apellido, u.correo \n" +
+                        "FROM incidencia i LEFT JOIN tipoincidencia tp ON (i.idTipo=tp.id) LEFT JOIN departamento d ON (tp.idDepartamento=d.id) LEFT JOIN usuario u ON (d.id=u.idDepartamento)\n" +
+                        "where i.id=? AND u.tipoUsuario=3";
+
+            PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta);
+            psConsulta.setInt(1,idIncidencia);
+            ResultSet resultConsulta = psConsulta.executeQuery();
+            
+            String nombreApellido, correo, empleados = "";
+            
+
+            while(resultConsulta.next()){                
+                nombreApellido = resultConsulta.getString(1)+" "+resultConsulta.getString(2);
+                correo = resultConsulta.getString(3);
+
+                empleados += nombreApellido+":"+correo+";";
+                
+                if(resultConsulta.isLast()){
+                    obj = new JSONObject();
+                    obj.put("empleados", empleados);  
+                }
+            }  
+
+            psConsulta.close();
+            resultConsulta.close();
+            connection.close();
+            
+        } catch (ClassNotFoundException | SQLException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        return obj;
+    }
+    
+    public synchronized boolean asignarIncidenciaEmpleado(int idIncidencia, String correoEmpleado){
+        boolean asignarEmpleado = false;
+        try {
+            Class.forName(driver);  
+            //obtenemos el codigo de la imagen de la incidencia
+            try (Connection connection = (Connection) DriverManager.getConnection(url,user,password)) {
+                //obtenemos el codigo de la imagen de la incidencia
+                String consultaCodImagen="SELECT `codImagen` \n" +
+                        "FROM `estadoincidencia` \n" +
+                        "WHERE idIncidencia=? AND idEstado=1";
+                PreparedStatement psConsultaCodImagen = (PreparedStatement) connection.prepareStatement(consultaCodImagen);
+                psConsultaCodImagen.setInt(1,idIncidencia);
+                ResultSet resultConsultaCodImagen = psConsultaCodImagen.executeQuery();
+                int codImagen = 0;
+                if(resultConsultaCodImagen.next()){
+                    codImagen = resultConsultaCodImagen.getInt(1);
+                }
+                
+                resultConsultaCodImagen.close();
+                psConsultaCodImagen.close();
+                
+                //comenzamos actualizando la incidencia donde dejaremos reflejado quien es el empleado encargados de ella
+                String update = "UPDATE `incidencia` \n" +
+                        "SET `usuarioEmpleado`=? \n" +
+                        "WHERE id=?";
+                PreparedStatement psUpdate = (PreparedStatement) connection.prepareStatement(update);
+                psUpdate.setString(1, correoEmpleado);
+                psUpdate.setInt(2, idIncidencia);
+                long nUpdate = psUpdate.executeUpdate();
+                
+                if(nUpdate>0){
+                    //una vez actualizada la incidencia procedemos a insertar el nuevo estado de la incidencia
+                    String insert = "INSERT INTO `estadoincidencia`(`id`, `fecha`, `descripcion`, `idIncidencia`, `idEstado`, `codImagen`) VALUES (NULL,?,NULL,?,4,?)";
+                    
+                    myDate = new Date();
+                    fecha = new SimpleDateFormat("yyyy-MM-dd").format(myDate);
+                    
+                    PreparedStatement psInsert = (PreparedStatement) connection.prepareStatement(insert);
+                    psInsert.setString(1, fecha);
+                    psInsert.setInt(2, idIncidencia);
+                    psInsert.setInt(3, codImagen);
+                    long nInsert = psInsert.executeUpdate();
+                    
+                    if(nInsert>0){
+                        asignarEmpleado=true;
+                    }
+                    psInsert.close();
+                    
+                }
+                psUpdate.close();
+            }
+            
+        } catch (ClassNotFoundException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (SQLException ex) {
+            Logger.getLogger(ControlGestion.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        return asignarEmpleado;    
+    }
+    
     
     //      APP ANDROID
 

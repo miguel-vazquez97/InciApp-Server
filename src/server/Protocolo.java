@@ -23,7 +23,9 @@ public class Protocolo {
                                        "7||listadoIncidenciasOk||",
                                        "8||detallesIncidenciaOk||",
                                        "9||supervisorAsignadoOk||",
-                                       "10||supervisorAsignadoDenegado||"};
+                                       "10||supervisorAsignadoDenegado||",
+                                       "11||empleadoAsignadoOk||",
+                                       "12||empleadoAsignadoDenegado||"};
   
     
     private int state = INICIO;
@@ -34,6 +36,8 @@ public class Protocolo {
     private static final int INCIDENCIAS_TABLA = 4;
     private static final int DATOS_INCIDENCIA_NUEVA_REGISTRADA = 5;
     private static final int ASIGNAR_INCIDENCIA_SUPERVISOR = 6;
+    private static final int LISTADO_EMPLEADOS = 7;
+    private static final int ASIGNAR_INCIDENCIA_EMPLEADO = 8;
     
     static boolean transicionNula = false;
     
@@ -94,6 +98,16 @@ public class Protocolo {
                             
                         case "6":
                             state = ASIGNAR_INCIDENCIA_SUPERVISOR;
+                            transicionNula=true;
+                            break;   
+                            
+                        case "7":
+                            state = LISTADO_EMPLEADOS;
+                            transicionNula=true;
+                            break;
+                            
+                        case "8":
+                            state = ASIGNAR_INCIDENCIA_EMPLEADO;
                             transicionNula=true;
                             break;    
                     }                    
@@ -187,6 +201,36 @@ public class Protocolo {
                         respuestaProtocolo = codigosProtocolo[10];
                     }
                                         
+                    transicionNula=false;
+                    state = INICIO;
+                    break; 
+                    
+                case LISTADO_EMPLEADOS:
+                    
+                    JSONObject object = controlGestion.obtenerEmpleados(Integer.parseInt(resUsuario[1]));
+
+                    if(object == null){
+                        dataOutputStream.writeUTF("null");
+                    }else{
+
+                        dataOutputStream.writeUTF(object.toString());
+                    }
+                        
+                    respuestaProtocolo = "";
+                
+                    transicionNula=false;
+                    state = INICIO;
+                    break;
+                    
+                case ASIGNAR_INCIDENCIA_EMPLEADO:
+                    
+                    boolean empleadoAsignado = controlGestion.asignarIncidenciaEmpleado(Integer.parseInt(resUsuario[1]),resUsuario[2]);
+                    if(empleadoAsignado){
+                        respuestaProtocolo = codigosProtocolo[11];
+                    }else{
+                        respuestaProtocolo = codigosProtocolo[12];
+                    }
+                    
                     transicionNula=false;
                     state = INICIO;
                     break;    
