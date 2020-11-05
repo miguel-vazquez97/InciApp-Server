@@ -31,9 +31,9 @@ public class ProtocoloAndroid {
                                        "58||incidenciaYaRegistrada||",
                                        "59||listadoIncidenciasOk||",
                                        "60||detallesIncidenciaOk||",
-                                       "",
-                                       "",
-                                       "",
+                                       "61||detallesIncidenciaSupervisorOk||",
+                                       "62||opcionEnTramiteIncidenciaValidada||",
+                                       "63||opcionEnTramiteIncidenciaDenegada||",
                                        "",
                                        "",
                                        "",
@@ -51,8 +51,11 @@ public class ProtocoloAndroid {
     private static final int LOG_OUT_USUARIO = 15;
     private static final int REGISTRAR_INCIDENCIA = 3;
     private static final int HISTORIAL_INCIDENCIAS = 4;    
-    private static final int INCIDENCIAS_ACTIVAS = 5;
-    private static final int DETALLES_INCIDENCIA = 8;
+    private static final int INCIDENCIAS_ACTIVAS = 5;    
+    private static final int INCIDENCIAS_ENTRAMITE = 6;
+    private static final int DETALLES_INCIDENCIA = 8;    
+    private static final int DETALLES_INCIDENCIA_SUPERVISOR = 9;
+    private static final int OPCION_ENTRAMITE = 10;
     
     static boolean transicionNula = false;
     
@@ -61,10 +64,10 @@ public class ProtocoloAndroid {
     Socket socket;
     HiloTemporizador hiloTemporizador;
     
-    OutputStream out;
+    OutputStream output;
     InputStream input;
-    DataOutputStream outputStream;
-    DataInputStream inputStream;
+    DataOutputStream dataOutputStream;
+    DataInputStream dataInputStream;
     
     File file;
     OutputStream outputImagen;
@@ -73,6 +76,10 @@ public class ProtocoloAndroid {
     Long consecutivo;
     String name, pictureFile;
 
+    BASE64Encoder encoder;
+    String base64;
+    
+    String respuestaControlGestion;
 
     public ProtocoloAndroid(Socket socket, ControlGestion cg, String path, HiloTemporizador hiloTemporizador){
         this.socket = socket;
@@ -81,13 +88,15 @@ public class ProtocoloAndroid {
         this.hiloTemporizador = hiloTemporizador;
         
         try {
-            out = socket.getOutputStream();
+            output = socket.getOutputStream();
             input = socket.getInputStream();
-            outputStream = new DataOutputStream(socket.getOutputStream());
-            inputStream = new DataInputStream(socket.getInputStream());
+            dataOutputStream = new DataOutputStream(socket.getOutputStream());
+            dataInputStream = new DataInputStream(socket.getInputStream());
         } catch (IOException ex) {
             Logger.getLogger(ProtocoloAndroid.class.getName()).log(Level.SEVERE, null, ex);
         }
+        
+        encoder = new BASE64Encoder();
     }
     
     public String processInput(String respuestaUsuario) throws IOException{
@@ -132,8 +141,23 @@ public class ProtocoloAndroid {
                             transicionNula=true;
                             break;  
                             
+                        case "56":
+                            state = INCIDENCIAS_ENTRAMITE;
+                            transicionNula=true;
+                            break;    
+                            
                         case "60":
                             state = DETALLES_INCIDENCIA;
+                            transicionNula=true;
+                            break;   
+                            
+                        case "61":
+                            state = DETALLES_INCIDENCIA_SUPERVISOR;
+                            transicionNula=true;
+                            break;
+                            
+                        case "62":
+                            state = OPCION_ENTRAMITE;
                             transicionNula=true;
                             break;    
                     }
@@ -180,7 +204,7 @@ public class ProtocoloAndroid {
                     
                 case REGISTRAR_INCIDENCIA:
                     
-                    outputStream.writeUTF("EnviarImagen");
+                    dataOutputStream.writeUTF("EnviarImagen");
                     
                     consecutivo = System.currentTimeMillis() / 1000;
                     name = consecutivo.toString();
@@ -189,18 +213,18 @@ public class ProtocoloAndroid {
                     file = new File(path+"\\"+pictureFile);
                     file.createNewFile();
                     outputImagen = new FileOutputStream(file);
-                    while(inputStream.available()<1){}
-                     longitud = inputStream.readLong();
+                    while(dataInputStream.available()<1){}
+                     longitud = dataInputStream.readLong();
 
                      while(file.length()<longitud){
-                        bytesImagen = new byte[inputStream.available()];
-                        inputStream.read(bytesImagen);
+                        bytesImagen = new byte[dataInputStream.available()];
+                        dataInputStream.read(bytesImagen);
                         outputImagen.write(bytesImagen);                        
                     }                  
                     outputImagen.close();
                     
-                    outputStream.writeUTF("EnviarDatosIncidencia");
-                    String datosInci = inputStream.readUTF();
+                    dataOutputStream.writeUTF("EnviarDatosIncidencia");
+                    String datosInci = dataInputStream.readUTF();
                     String [] datos = datosInci.split("\\|\\|");
                     String respuesta_registrar_incidencia = controlGestion.nuevaIncidencia(datos[0],datos[1],datos[2],datos[3],datos[4],file.getName());
                     
@@ -238,21 +262,61 @@ public class ProtocoloAndroid {
                     transicionNula=false;
                     break;
                     
+                case INCIDENCIAS_ENTRAMITE:
+                    JSONArray incidencias_enTramite = controlGestion.obtenerListadoIncidencias(resUsuario[1],resUsuario[2]);
+                    respuestaProtocolo += codigosProtocoloAndroid[9]+incidencias_enTramite.toString()+"||";
+                    
+                    state = INICIO;
+                    transicionNula=false;
+                    break;    
+                    
                 case DETALLES_INCIDENCIA:
                                     
                     JSONArray detalles_incidencia = controlGestion.obtenerDetallesIncidencia(Integer.parseInt(resUsuario[1]));                        
                     //codificamos JSONArray a Base64
-                    BASE64Encoder encoder = new BASE64Encoder();
-                    String base64 = encoder.encode(detalles_incidencia.toJSONString().getBytes());
+                    
+                    base64 = encoder.encode(detalles_incidencia.toJSONString().getBytes());
                     //enviamos primero el tamano que tendra la cadena en Base64
-                    outputStream.writeInt(base64.length());
+                    dataOutputStream.writeInt(base64.length());
                     //enviamos los bytes de dicha cadena
-                    outputStream.write(base64.getBytes());
+                    dataOutputStream.write(base64.getBytes());
                                        
                     respuestaProtocolo = "";
                     state = INICIO;
                     transicionNula=false;
-                    break;     
+                    break;  
+                    
+                case DETALLES_INCIDENCIA_SUPERVISOR:
+                    
+                    JSONObject detalle_incidencia_supervisor = controlGestion.obtenerDetallesIncidenciaSupervisor(Integer.parseInt(resUsuario[1]),resUsuario[2]);
+                    
+                    base64 = encoder.encode(detalle_incidencia_supervisor.toJSONString().getBytes());
+                    dataOutputStream.writeInt(base64.length());
+                    dataOutputStream.write(base64.getBytes());
+                                        
+                    respuestaProtocolo = "";
+                    state = INICIO;
+                    transicionNula=false;
+                    
+                    break;
+                    
+                case OPCION_ENTRAMITE:
+
+                    respuestaControlGestion = controlGestion.opcionValidacionIncidenciaSupervisor(Integer.parseInt(resUsuario[1]), resUsuario[2], resUsuario[3]);
+                    
+                    switch(respuestaControlGestion){
+                        case "validadaOk":
+                            respuestaProtocolo += codigosProtocoloAndroid[12];
+                            break;
+                        case "denegadaOk":
+                            respuestaProtocolo += codigosProtocoloAndroid[13];
+                            break;
+                    }
+                                        
+                    state = INICIO;
+                    transicionNula=false;
+                    
+                    break;    
             }
             
         }while(transicionNula==true);

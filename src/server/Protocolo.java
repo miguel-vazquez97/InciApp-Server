@@ -7,6 +7,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import sun.misc.BASE64Encoder;
 
 /**
  *
@@ -38,6 +39,7 @@ public class Protocolo {
     private static final int ASIGNAR_INCIDENCIA_SUPERVISOR = 6;
     private static final int LISTADO_EMPLEADOS = 7;
     private static final int ASIGNAR_INCIDENCIA_EMPLEADO = 8;
+    private static final int DETALLES_INCIDENCIA = 11;
     
     static boolean transicionNula = false;
     
@@ -46,6 +48,9 @@ public class Protocolo {
     Socket socket;
     HiloTemporizador hiloTemporizador;
     DataOutputStream dataOutputStream;
+    
+    BASE64Encoder encoder;
+    String base64;
     
     public Protocolo(Socket socket, ControlGestion cg, HiloTemporizador hiloTemporizador){
         this.socket = socket;
@@ -57,6 +62,8 @@ public class Protocolo {
         } catch (IOException ex) {
             Logger.getLogger(Protocolo.class.getName()).log(Level.SEVERE, null, ex);
         }
+        
+        encoder = new BASE64Encoder();
     }
     
     public String processInput(String respuestaUsuario) throws IOException{
@@ -109,7 +116,12 @@ public class Protocolo {
                         case "8":
                             state = ASIGNAR_INCIDENCIA_EMPLEADO;
                             transicionNula=true;
-                            break;    
+                            break;   
+                            
+                        case "11":
+                            state = DETALLES_INCIDENCIA;
+                            transicionNula=true;
+                            break;     
                     }                    
                     break;
                     
@@ -181,7 +193,7 @@ public class Protocolo {
                         
                     case DATOS_INCIDENCIA_NUEVA_REGISTRADA:
                     
-                        JSONArray detalles_incidenciaNR = controlGestion.obtenerDetallesNuevaRegistrada(Integer.parseInt(resUsuario[1]));    
+                        JSONArray detalles_incidenciaNR = controlGestion.obtenerDetallesNuevaRegistrada(Integer.parseInt(resUsuario[1]), resUsuario[2]);    
                     
                         dataOutputStream.write(detalles_incidenciaNR.toJSONString().getBytes());
 
@@ -231,6 +243,22 @@ public class Protocolo {
                         respuestaProtocolo = codigosProtocolo[12];
                     }
                     
+                    transicionNula=false;
+                    state = INICIO;
+                    break;                      
+                    
+                case DETALLES_INCIDENCIA:
+                    
+                    JSONArray detalles_incidenciaH = controlGestion.obtenerHistorialIncidencia(Integer.parseInt(resUsuario[1])); 
+                    
+                    //codificamos JSONArray a Base64
+                    base64 = encoder.encode(detalles_incidenciaH.toJSONString().getBytes());
+                    //enviamos primero el tamano que tendra la cadena en Base64
+                    dataOutputStream.writeInt(base64.length());
+                    //enviamos los bytes de dicha cadena
+                    dataOutputStream.write(base64.getBytes());
+                    
+                    respuestaProtocolo="";
                     transicionNula=false;
                     state = INICIO;
                     break;    
