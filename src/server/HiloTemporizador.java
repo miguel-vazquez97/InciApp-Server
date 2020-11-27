@@ -19,8 +19,8 @@ public class HiloTemporizador extends Thread{
         do{
             
             try {
-                Thread.sleep(4000);
-                tiempoEspera+=4000;
+                Thread.sleep(10000);
+                tiempoEspera+=10000;
             } catch (InterruptedException ex) {
                 tiempoEspera=0;
             }
