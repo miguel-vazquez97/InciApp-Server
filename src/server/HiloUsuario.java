@@ -81,7 +81,7 @@ public class HiloUsuario extends Thread{
                     }else{
                         mensajeProtocolo = protocoloAndroid.processInput(mensajeUsuario);                                              
                     }
-                    
+
                     enviarUsu = mensajeProtocolo.getBytes();
                     enviarUsuario.write(enviarUsu);
                     enviarUsuario.flush();
@@ -91,6 +91,7 @@ public class HiloUsuario extends Thread{
                     
                 }                
                 Thread.sleep(1000);
+                
                 if(usuario.isClosed())
                     finalizar=true;
             }

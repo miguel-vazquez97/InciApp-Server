@@ -1183,16 +1183,20 @@ public class ControlGestion {
             Class.forName(driver);
             Connection connection = (Connection) DriverManager.getConnection(url, user, password);
             //COMPROBAMOS SI EXISTE LA INCIDENCIA
-            String consulta = "SELECT i.id FROM incidencia i, tipoincidencia t WHERE i.idTipo=t.id AND T.nombre = ? "
-                    + "AND CAST(SUBSTRING_INDEX(i.ubicacion,';',1) AS DECIMAL(8,6)) BETWEEN ? AND ?"
-                    + "AND CAST(SUBSTRING_INDEX(i.ubicacion,';',-1) AS DECIMAL(10,10)) BETWEEN ? AND ?";
+            String consulta = "SELECT i.id \n" +
+                                "FROM incidencia i LEFT JOIN estadoincidencia ei ON (i.id=ei.idIncidencia), tipoincidencia t\n" +
+                                "WHERE i.idTipo=t.id AND T.nombre = ?\n" +
+                                "AND CAST(SUBSTRING_INDEX(i.ubicacion,';',-1) AS DECIMAL(10,10)) BETWEEN ? AND ?\n" +
+                                "AND CAST(SUBSTRING_INDEX(i.ubicacion,';',1) AS DECIMAL(8,6)) BETWEEN ? AND ?\n" +
+                                "GROUP BY i.id\n" +
+                                "HAVING MAX(ei.idEstado)<7";
             ResultSet result;
             try (PreparedStatement psConsulta = (PreparedStatement) connection.prepareStatement(consulta)) {
                 psConsulta.setString(1, tipo);
-                psConsulta.setDouble(2, (Double.parseDouble(ubi[0]) - 10));
-                psConsulta.setDouble(3, (Double.parseDouble(ubi[0]) + 10));
-                psConsulta.setDouble(4, (Double.parseDouble(ubi[1]) - 10));
-                psConsulta.setDouble(5, (Double.parseDouble(ubi[1]) + 10));
+                psConsulta.setDouble(2, (Double.parseDouble(ubi[1]) - 10));
+                psConsulta.setDouble(3, (Double.parseDouble(ubi[1]) + 10));
+                psConsulta.setDouble(4, (Double.parseDouble(ubi[0]) - 10));
+                psConsulta.setDouble(5, (Double.parseDouble(ubi[0]) + 10));
                 result = psConsulta.executeQuery();
                 //si hay alguna incidencia con la misma ubicacion en un radio de 10m y que no sea ni nueva/arreglada
                 //si es así, significa que estamos hablando de la misma incidencia y no habrá que registrarla
